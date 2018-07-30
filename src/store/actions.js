@@ -3,32 +3,18 @@ import service from '../services/github';
 /**
  * Action types
  */
-export const DOWNLOADS_REQUESTED = 'DOWNLOADS_REQUESTED';
-export const DOWNLOADS_RECEIVED = 'DOWNLOADS_RECEIVED';
-
-export const downloadsRangesRequested = repo => ({
-  type: DOWNLOADS_REQUESTED,
-  repo,
-});
-
-export const downloadsRangesReceived = (repo, data) => ({
-  type: DOWNLOADS_RECEIVED,
-  repo,
-  data,
-});
+export const STARS_REQUESTED = 'STARS_REQUESTED';
+export const STARS_RECEIVED = 'STARS_RECEIVED';
 
 /**
- * Async get downloads ranges by package.
+ * Async get stars history.
  */
-export const getDownloadsRanges = (repo) => async (dispatch, getState) => {
+export const getStarsHistory = repos => async (dispatch, getState) => {
   const state = getState();
   if (!state.isFetching) {
-    // dispatch fetching is started
-    dispatch(downloadsRangesRequested(repo));
-    // fetch data from service
-    const data = await service.getStarsHistory();
-    // dispatch fetching action is complete
-    dispatch(downloadsRangesReceived(repo, data));
+    dispatch({type: STARS_REQUESTED, repos}); // dispatch fetching is started
+    const data = await service.getStarsHistory(repos); // fetch data from service
+    dispatch({type: STARS_RECEIVED, repos, data}); // dispatch fetching action is complete
     return data;
   }
   return Promise.resolve();

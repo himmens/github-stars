@@ -4,60 +4,63 @@
  * Documentation: https://developer.github.com/v3/activity/starring/
  */
 class GitHubService {
-  static ENDPOINT0 = 'https://api.github.com/repos/facebook/react';
-  static ENDPOINT = 'https://api.github.com/repos/facebook/react/stargazers';
+  static STARGAZERS_ENDPOINT = 'https://api.github.com/repos/{repo}/stargazers';
+  static REPO_ENDPOINT = 'https://api.github.com/repos/{repo}';
+  static MAX_PAGE_COUNT = 10; // max number of pages for requesting data
 
-  parsePageMax(value) {
-    const regexp = /next.*?page=(\d+).*?last/gim;
-    const res = regexp.exec(value);
-    return res[1] ? parseInt(res[1], 10) : 0;
+  async request(url) {
+    console.log("request:", url);
+    return fetch(url, {method: 'GET', headers: {Accept: 'application/vnd.github.v3.star+json'}});
   }
 
   /**
-   * Parse date in format ISO 8601
-   * Example: '2011-10-10T14:48:00'
-   * @param value
+   * Sends initial request and parse total pages count from Link header.
+   * Returns pages total.
+   *
+   * Link: <https://api.github.com/repositories/10270250/stargazers?page=2>; rel="next", <https://api.github.com/repositories/10270250/stargazers?page=1334>; rel="last"
    */
-  parseDate(value) {
-    value = value.replace(/\D/g, ' '); // replace anything but numbers by spaces
-    let parts = value.split(' ');
-    return Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
+  async requestInitialStargazers(repo) {
+    return this.request(GitHubService.STARGAZERS_ENDPOINT.replace('{repo}', repo))
+      .then(response => {
+        let link = response.headers.get('link');
+        const regexp = /next.*?page=(\d+).*?last/gim;
+        const res = regexp.exec(link);
+        return res[1] ? parseInt(res[1], 10) : 0;
+      });
   }
 
   /**
-   * link Sample (no link when star < 30):
-   * <https://api.github.com/repositories/40237624/stargazers?access_token=2e71ec1017dda2220ccba0f6922ecefd9ea44ac7&page=2>;
-   * rel="next",
-   * <https://api.github.com/repositories/40237624/stargazers?access_token=2e71ec1017dda2220ccba0f6922ecefd9ea44ac7&page=4>;
-   * rel="last"
+   * Sends request with page param to get date related to paged stars count.
+   * Returns data point in format {date, value}
+   *
+   * Response:
+   *  [
+   *    {starred_at: "2013-05-29T20:59:49Z", user: {}},
+   *    {starred_at: "2013-05-29T21:18:36Z", user: {}},
+   *    ...
+   *  ]
    */
-  async requestInitialStargazers() {
-    // return new Promise(resolve => {resolve({date: page * 1000000, value: (page - 1) * 30})});
-    let url = `${GitHubService.ENDPOINT}`;
-    console.log("fetch:", url)
-    return fetch(url, {method: 'GET', headers: {Accept: 'application/vnd.github.v3.star+json'}})
-      .then(response => this.parsePageMax(response.headers.get('link'))) // parse total pages from link header
-  }
-
-  async requestStargazers(page = 0) {
-    // return new Promise(resolve => {resolve({date: page * 1000000, value: (page - 1) * 30})});
-    let url = `${GitHubService.ENDPOINT}`;
-    if (page > 0)
-      url += `?page=${page}`;
-    console.log("fetch:", url)
-    return fetch(url, {method: 'GET', headers: {Accept: 'application/vnd.github.v3.star+json'}})
+  async requestStargazers(repo, page) {
+    return this.request(`${GitHubService.STARGAZERS_ENDPOINT.replace('{repo}', repo)}?page=${page}`)
       .then(response => response.json())
-      .then(data => data[0])
-      .then(item => ({
-        date: this.parseDate(item.starred_at),
-        value: page * 30
-      }));
+      .then(data => data[0]) // use only first element for data parsing
+      .then(item => {
+        // parse date in format ISO 8601
+        let value = item.starred_at.replace(/\D/g, ' '); // replace anything but numbers by spaces
+        let parts = value.split(' ');
+        return {
+          date: Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]),
+          value: page * 30
+        }
+      });
   }
 
-  async requestRepo() {
-    const url = `${GitHubService.ENDPOINT0}`;
-    console.log("fetch:", url)
-    return fetch(url, {method: 'GET', headers: {Accept: 'application/vnd.github.v3.star+json'}})
+  /**
+   * Sends request to get repository info with total stars amount.
+   * Returns final data point with total stars amount
+   */
+  async requestRepo(repo) {
+    return this.request(GitHubService.REPO_ENDPOINT.replace('{repo}', repo))
       .then(response => response.json())
       .then(data => ({
         date: Date.now(),
@@ -65,22 +68,26 @@ class GitHubService {
       }));
   }
 
-  async getStarsHistory() {
+  async getRepoStarsHistory(repo) {
     const pageMin = 2;
-    const pageMax = await this.requestInitialStargazers();
-    console.log("pageMax:", pageMax);
+    const pageMax = await this.requestInitialStargazers(repo);
+    console.log(repo, "pageMax:", pageMax);
 
-    const count = 10; // number of selected pages for requesting data
-    const step = Math.floor((pageMax - pageMin) / count); // pages step
+    const step = Math.floor((pageMax - pageMin) / GitHubService.MAX_PAGE_COUNT); // pages step
     const requests = [];
     for (let i = pageMin; i <= pageMax; i += step) {
-      requests.push(this.requestStargazers(i));
+      requests.push(this.requestStargazers(repo, i));
     }
-    requests.push(this.requestRepo());
-    // const starsTotal = 107437;
-    const starsHistory = await Promise.all(requests);
-    console.log("starsHistory:", starsHistory);
-    return Promise.resolve(starsHistory);
+    requests.push(this.requestRepo(repo));
+    return Promise.all(requests);
+  }
+
+  async getStarsHistory(repos) {
+    let res = {};
+    for (let repo of repos) {
+      res[repo] = await this.getRepoStarsHistory(repo);
+    }
+    return res;
   }
 }
 
