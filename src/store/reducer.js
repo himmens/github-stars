@@ -10,7 +10,7 @@ const initialState = Immutable({
 });
 
 export default function reduce(state = initialState, action = {}) {
-  const {repos, data} = action;
+  const {data} = action;
 
   switch (action.type) {
     case STARS_REQUESTED:
