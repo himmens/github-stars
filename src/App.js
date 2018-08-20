@@ -16,7 +16,7 @@ class App extends React.Component {
   onInputKeyDown(event) {
     if (event.keyCode === 13) { // ENTER
       const {dispatch} = this.props;
-      dispatch(getStarsHistory(event.target.value.split(',')));
+        dispatch(getStarsHistory(event.target.value.split(',')));
     }
   }
 
@@ -25,8 +25,8 @@ class App extends React.Component {
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
+    // const hours = date.getHours();
+    // const minutes = date.getMinutes();
     // return `${hours < 10 ? '0'+hours : hours}:${minutes < 10 ? '0'+minutes : minutes}`;
     return `${day < 10 ? '0' + day : day}/${month < 10 ? '0' + month : month}/${year}`;
   }
